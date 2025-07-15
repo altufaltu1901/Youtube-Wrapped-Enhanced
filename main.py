@@ -52,7 +52,6 @@ Query: '{query}'
         print("Raw LLM response:", response.choices[0].message.content)
         return OPEN_ENDED, None, None, None
 
-# --- Gemini embedding and LLM for open-ended queries ---
 def get_gemini_embedding(text, model="models/embedding-001"):
     import google.generativeai as genai
     api_key = os.getenv("GOOGLE_API_KEY")
@@ -90,11 +89,9 @@ def answer_general_query_with_latest_videos(query, n=50):
             "  setx TOGETHER_API_KEY \"YOUR_KEY_HERE\" (Windows)"
         )
     client = Together(api_key=api_key)
-    # Load the latest N entries from altamash.json
     with open("altamash.json", "r", encoding="utf-8") as f:
         data = pyjson.load(f)
-    # Sort by timestamp (assuming ISO or sortable format, else keep as is)
-    # If timestamps are not sortable, just use the last N entries
+    
     latest_entries = data[0:n]
     context = "\n".join(f"{e['timestamp']} - {e['video_title']} ({e['channel_name']})" for e in latest_entries)
     prompt = f"""
@@ -143,19 +140,19 @@ if __name__ == "__main__":
         print(f"Type: {qtype}\nYear: {year}\nTopic: {topic}\nNumber: {number}")
         from together import Together
         client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
-        # Ask Together if the query is general or subset
+       
         subset_prompt = f"Is the following question about my YouTube history in general, or about a specific subset/topic? Answer with 'general' or 'subset' and if subset, also provide the topic.\nQuestion: {user_query}"
         subset_response = client.chat.completions.create(
             model="moonshotai/Kimi-K2-Instruct",
             messages=[{"role": "user", "content": subset_prompt}]
         )
         subset_answer = subset_response.choices[0].message.content.strip().lower()
-        # Parse the answer
+        
         print(subset_answer)
         if subset_answer.startswith("general"):
             answer_general_query_with_latest_videos(user_query, n=30)
         else:
-            # Try to extract topic from the answer
+           
             topic_extracted = topic
             if "topic:" in subset_answer:
                 topic_extracted = subset_answer.split("topic:", 1)[-1].strip()
