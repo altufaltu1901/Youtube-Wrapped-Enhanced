@@ -29,10 +29,10 @@ the type to enter will be the number of the type in the list
 the year will only be a number if the user says something like this year put thenumber of the year
 also for number only put number and try to figure out the number from the query
 (1) aggregate (most watched channel/video can ONLY be channel or video, possibly with year, top n most watched), for this in topic put channel or video just the words, and number (top n)if in query and put year if in query
-(2) open-ended(any question other than the rest ), leave everything empty in json except type and topic in topic mention whats it about( if there isnt a theme and they are asking about their history in general put topic as general)
-(3) hybrid (most watched about X). for this in topic put the topic the query is about and number if in query and year if in query
+(2) open-ended(any question other than the rest ), leave everything empty in json except(year can be mentioned) type and topic in topic mention whats it about( if there isnt a theme and they are asking about their history in general put topic as general)
+(3) hybrid (most watched about X(ONLY quantitive queries about topic or else go type 2)). for this in topic put the topic the query is about and number if in query and year if in query
 (4) total (total videos watched/cannels)  for this in topic put the topic put channel or video just the words
-(5) wrapped(anything about wrapped or summary as in like everything about youtube)  year if in query only the number
+(5) wrapped(anything about wrapped or summary (or what did i watch/tell me about my usage)as in like everything about youtube)  year if in query only the number
 Also extract the year (if present) and the topic (if present).
 DO NOT CHOOSE TYPE 1,4 IF ITS NOT ABOUT CHANNEL OR VIDEO
 Current year is 2025
@@ -75,7 +75,7 @@ def cosine_similarity(a, b):
     b = np.array(b)
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-def answer_general_query_with_latest_videos(query, n=50):
+def answer_general_query_with_latest_videos(query, n=100,year=2025):
     """
     Use the top N latest videos (by timestamp order in altamash.json) as context and send to Together LLM for an answer.
     """
@@ -91,13 +91,16 @@ def answer_general_query_with_latest_videos(query, n=50):
     client = Together(api_key=api_key)
     with open("altamash.json", "r", encoding="utf-8") as f:
         data = pyjson.load(f)
-    
-    latest_entries = data[0:n]
+    if year:
+                filtered_data = [entry for entry in data if str(year) in entry.get("timestamp", "")]
+    else:
+                filtered_data = data
+    latest_entries = filtered_data[0:n]
     context = "\n".join(f"{e['timestamp']} - {e['video_title']} ({e['channel_name']})" for e in latest_entries)
     prompt = f"""
 You are a YouTube analytics assistant. Here is some of my latest YouTube watch history:
 {context}
-
+Dont output any context only the answer
 Answer the following question about my YouTube history:
 {query}
 """
@@ -136,21 +139,25 @@ if __name__ == "__main__":
                     print(f"{channel}: {count} times")
             else:
                 print("Could not determine whether to aggregate videos or channels from the query topic.")
-    elif qtype == 2:
+    elif qtype == 2 or qtype==3:
         print(f"Type: {qtype}\nYear: {year}\nTopic: {topic}\nNumber: {number}")
         from together import Together
         client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
-       
-        subset_prompt = f"Is the following question about my YouTube history in general, or about a specific subset/topic? Answer with 'general' or 'subset' and if subset, also provide the topic.\nQuestion: {user_query}"
-        subset_response = client.chat.completions.create(
-            model="moonshotai/Kimi-K2-Instruct",
-            messages=[{"role": "user", "content": subset_prompt}]
-        )
-        subset_answer = subset_response.choices[0].message.content.strip().lower()
-        
-        print(subset_answer)
+        subset_answer=""
+        if(topic!="general"):
+            subset_prompt = f"Is the following question about my YouTube history in general, or about a specific subset/topic? Answer with 'general' or 'subset' and if subset, also provide the topic.\nQuestion: {user_query}"
+            subset_response = client.chat.completions.create(
+                model="moonshotai/Kimi-K2-Instruct",
+                messages=[{"role": "user", "content": subset_prompt}]
+            )
+
+            subset_answer = subset_response.choices[0].message.content.strip().lower()
+            print(subset_answer)
+        else:
+            subset_answer=topic
+            
         if subset_answer.startswith("general"):
-            answer_general_query_with_latest_videos(user_query, n=30)
+            answer_general_query_with_latest_videos(user_query)
         else:
            
             topic_extracted = topic
@@ -166,23 +173,40 @@ if __name__ == "__main__":
             scored.sort(reverse=True, key=lambda x: x[0])
             top_entries = [entry for _, entry in scored[:50]]
             # Prepare context for Gemini LLM
-            import google.generativeai as genai
-            api_key = os.getenv("GOOGLE_API_KEY")
-            genai.configure(api_key=api_key)
+            client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
+            subset_answer=""
             context = "\n".join(f"{e['timestamp']} - {e['video_title']} ({e['channel_name']})" for e in top_entries)
-            model = genai.GenerativeModel('gemini-1.5-pro')
-            prompt = f"""
-You are a YouTube analytics assistant. Here is some of my YouTube watch history:
-{context}
+            subset_prompt = f"""
+# You are a YouTube analytics assistant. Here is some of my YouTube watch history:
+# {context}
 
-Answer the following question about my YouTube history:
-{user_query}
-"""
-            response = model.generate_content(prompt)
-            print("\nAnswer:")
-            print(response.text)
-    elif qtype == 3:
-        print(f"Type: {qtype}\nYear: {year}\nTopic: {topic}\nNumber: {number}")
+# Answer the following question about my YouTube history:
+# {user_query}
+# """
+            subset_response = client.chat.completions.create(
+                model="moonshotai/Kimi-K2-Instruct",
+                messages=[{"role": "user", "content": subset_prompt}]
+            )
+
+            print(subset_response.choices[0].message.content)
+#             print(subset_answer)
+#             import google.generativeai as genai
+#             api_key = os.getenv("GOOGLE_API_KEY")
+#             genai.configure(api_key=api_key)
+#             context = "\n".join(f"{e['timestamp']} - {e['video_title']} ({e['channel_name']})" for e in top_entries)
+#             model = genai.GenerativeModel('gemini-1.5-pro')
+#             prompt = f"""
+# You are a YouTube analytics assistant. Here is some of my YouTube watch history:
+# {context}
+
+# Answer the following question about my YouTube history:
+# {user_query}
+# """
+#             response = model.generate_content(prompt)
+#             print("\nAnswer:")
+#             print(response.text)
+    # elif qtype == 3:
+    #     print(f"Type: {qtype}\nYear: {year}\nTopic: {topic}\nNumber: {number}")
     elif qtype == 4:
         print(f"Type: {qtype}\nYear: {year}\nTopic: {topic}\nNumber: {number}")
         with open("altamash.json", "r", encoding="utf-8") as f:
@@ -223,3 +247,7 @@ Answer the following question about my YouTube history:
                 print(f"  {channel}: {count} times")
             print(f"\nTotal Unique Videos Watched: {len(unique_videos)}")
             print(f"Total Unique Channels Watched: {len(unique_channels)}")
+            print("Top 5 Genres Watched:")
+            prompt="You are given the 100 latest watched videos in the year give me the top 5 genres with one sentence resoning"
+            answer_general_query_with_latest_videos(prompt,100,year)
+
