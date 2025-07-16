@@ -5,12 +5,11 @@ import json as pyjson
 import string
 import numpy as np
 
-# Query types
-AGGREGATE = 'aggregate'  # most watched channel/video, possibly with year
-OPEN_ENDED = 'open_ended'  # open-ended question
-HYBRID = 'hybrid'  # most watched about X
+# # Query types
+# AGGREGATE = 'aggregate'  # most watched channel/video, possibly with year
+# OPEN_ENDED = 'open_ended'  # open-ended question
+# HYBRID = 'hybrid'  # most watched about X
 
-# --- LLM-based classification using Together API ---
 def classify_query_llm(query: str) -> tuple:
     from together import Together
     api_key = os.getenv("TOGETHER_API_KEY")
@@ -120,7 +119,6 @@ if __name__ == "__main__":
         print(f"Type: {qtype}\nYear: {year}\nTopic: {topic}\nNumber: {number}")
         with open("altamash.json", "r", encoding="utf-8") as f:
             total_data = pyjson.load(f)
-            # Filter by year if present
             if year:
                 filtered_data = [entry for entry in total_data if str(year) in entry.get("timestamp", "")]
             else:
@@ -172,7 +170,6 @@ if __name__ == "__main__":
                 scored.append((sim, entry))
             scored.sort(reverse=True, key=lambda x: x[0])
             top_entries = [entry for _, entry in scored[:50]]
-            # Prepare context for Gemini LLM
             client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
             subset_answer=""
             context = "\n".join(f"{e['timestamp']} - {e['video_title']} ({e['channel_name']})" for e in top_entries)
@@ -239,6 +236,7 @@ if __name__ == "__main__":
             unique_videos = set(entry["video_title"] for entry in filtered_data)
             unique_channels = set(entry["channel_name"] for entry in filtered_data)
             print(f"\nYouTube Wrapped Summary{f' for {year}' if year else ''}:")
+            print("\n")
             print(f"Top 5 Most Watched Videos:")
             for video, count in video_counter.most_common(5):
                 print(f"  {video}: {count} times")
@@ -247,7 +245,8 @@ if __name__ == "__main__":
                 print(f"  {channel}: {count} times")
             print(f"\nTotal Unique Videos Watched: {len(unique_videos)}")
             print(f"Total Unique Channels Watched: {len(unique_channels)}")
+            print("")
             print("Top 5 Genres Watched:")
             prompt="You are given the 100 latest watched videos in the year give me the top 5 genres with one sentence resoning"
-            answer_general_query_with_latest_videos(prompt,100,year)
+            answer_general_query_with_latest_videos(prompt,300,year)
 
